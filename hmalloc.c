@@ -205,7 +205,7 @@ hfree(void* item)
     }
     // else add chunk to free list and coalesce
     else {
-        free_list* chunk = (free_list *)item;
+        free_list* chunk = (free_list*)item;
         chunk->size = size;
         add_chunk(chunk);
         coalesce();
