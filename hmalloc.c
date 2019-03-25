@@ -216,10 +216,10 @@ void*
 hrealloc(void* prev, size_t size)
 {
     void* new_ptr = hmalloc(size);
+
     size_t old_size = *(size_t*)(prev - sizeof(size_t));
-
     memcpy(new_ptr, prev, old_size);
+    
     hfree(prev);
-
     return new_ptr;
 }

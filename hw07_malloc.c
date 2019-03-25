@@ -34,6 +34,10 @@ xfree(void* ptr)
 void*
 xrealloc(void* prev, size_t bytes)
 {
-    return hrealloc(prev, bytes);
+    pthread_mutex_lock(&mutex);
+    void* ptr = hrealloc(prev, bytes);
+    pthread_mutex_unlock(&mutex);
+
+    return ptr;
 }
 
