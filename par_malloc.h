@@ -11,16 +11,22 @@ typedef struct hm_stats {
 
 typedef struct bucket bucket;
 
+typedef unsigned char* bitmap_t;
+
 struct bucket {
     size_t size;
-    size_t bitmap_size;
+    size_t bitmap_size; // in bits
     bucket* next;
-    char* bitmap;
+    bitmap_t bitmap;
 };
 
 bucket* make_bucket(size_t size);
 
 hm_stats* hgetstats();
 void hprintstats();
+
+void set_bit(bitmap_t b, int i);
+void unset_bit(bitmap_t b, int i);
+int get_bit(bitmap_t b, int i);
 
 #endif
