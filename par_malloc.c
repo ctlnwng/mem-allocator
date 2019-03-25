@@ -34,19 +34,23 @@ div_up(size_t xx, size_t yy)
     }
 }
 
+size_t
+convert_to_bytes(size_t bytes)
+{
+    return (size_t)ceil((double)bytes / 8);
+}
+
 
 // NOTE: The following bitmap functions were taken from the following
 // stack overflow thread: https://stackoverflow.com/questions/16947492/looking-for-a-bitmap-implementation-api-in-linux-c
 void set_bit(bitmap_t b, int i)
 {
     b[i / 8] |= 1 << (i & 7);
-    ((bucket*)(b - (sizeof(size_t) * 2) - sizeof(bucket*)))->bitmap = b;
 }
 
 void unset_bit(bitmap_t b, int i)
 {
     b[i / 8] &= ~(1 << (i & 7));
-    ((bucket*)(b - (sizeof(size_t) * 2) - sizeof(bucket*)))->bitmap = b;
 }
 
 int get_bit(bitmap_t b, int i)
@@ -72,18 +76,17 @@ find_alloc_bit_idx(bitmap_t b, int bitmap_size)
 bucket*
 make_bucket(size_t size)
 {
-    double temp = (PAGE_SIZE - ((sizeof(size_t) * 2) + sizeof(bucket*)));
-    int num_chunks = floor((temp * 8) / (((double)size * 8) + 1));
-    int bitmap_size = num_chunks;
+    double temp = (PAGE_SIZE - ((sizeof(size_t) * 2) + sizeof(bucket*) + sizeof(bitmap_t)));
+    size_t num_chunks = floor((temp * 8) / (((double)size * 8) + 1));
     
     size_t bucket_size = (size > 768) ? 4 * PAGE_SIZE : PAGE_SIZE;
     
     bucket* new_bucket = (bucket*) mmap(NULL, bucket_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
     new_bucket->size = size;
-    new_bucket->bitmap_size = bitmap_size;
+    new_bucket->bitmap_size = num_chunks;
     new_bucket->next = NULL;
-    new_bucket->bitmap = (void*)new_bucket + (sizeof(size_t) * 2) + sizeof(bucket*);
-    new_bucket->bitmap = memset(new_bucket->bitmap, 0, (size_t)ceil((double)new_bucket->bitmap_size / 8));
+    new_bucket->bitmap = (void*)new_bucket + (sizeof(size_t) * 2) + sizeof(bucket*) + sizeof(bitmap_t);
+    new_bucket->bitmap = memset(new_bucket->bitmap, 0, convert_to_bytes(num_chunks));
 
     return new_bucket;    
 }
@@ -144,7 +147,8 @@ xmalloc(size_t bytes)
         alloc_bit_idx = find_alloc_bit_idx(cur_bucket->bitmap, cur_bucket->bitmap_size);
     }
     
-    void* chunk = ((void*)cur_bucket) + 24 + (int)ceil((double)cur_bucket->bitmap_size / 8) + (alloc_bit_idx * cur_bucket->size);
+    void* chunk = ((void*)cur_bucket) + (sizeof(size_t) * 2) + sizeof(bucket*) + sizeof(bitmap_t) 
+        + convert_to_bytes(cur_bucket->bitmap_size) + (alloc_bit_idx * cur_bucket->size);
 
     *(size_t *)chunk = bytes;
     chunk = chunk + sizeof(size_t);
@@ -169,7 +173,9 @@ xfree(void* ptr)
         cur_bucket = cur_bucket->next;
     }
     
-    int bit_idx_to_free = (ptr - ((void *)cur_bucket + 24 + (int)ceil((double)cur_bucket->bitmap_size / 8))) / cur_bucket->size;
+    int bit_idx_to_free = (ptr - ((void *)cur_bucket + (sizeof(size_t) * 2) + sizeof(bucket*) + sizeof(bitmap_t)
+                + convert_to_bytes(cur_bucket->bitmap_size))) / cur_bucket->size;
+    
     unset_bit(cur_bucket->bitmap, bit_idx_to_free);
 }
 
