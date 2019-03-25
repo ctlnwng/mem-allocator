@@ -14,13 +14,14 @@ typedef struct bucket bucket;
 typedef unsigned char* bitmap_t;
 
 struct bucket {
+    int arena_id;
     size_t size;
     size_t bitmap_size; // in bits
     bucket* next;
     bitmap_t bitmap;
 };
 
-bucket* make_bucket(size_t size);
+bucket* make_bucket(int arena_id, size_t size);
 
 hm_stats* hgetstats();
 void hprintstats();
