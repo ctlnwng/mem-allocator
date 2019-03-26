@@ -11,7 +11,7 @@ typedef struct hm_stats {
 
 typedef struct bucket bucket;
 
-typedef unsigned char* bitmap_t;
+typedef unsigned long* bitmap_t;
 
 struct bucket {
     long arena_id;
