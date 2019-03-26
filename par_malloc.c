@@ -13,7 +13,8 @@
 #include "xmalloc.h"
 
 static size_t PAGE_SIZE = 4096;
-static size_t HEADER_SIZE = sizeof(int) + (sizeof(size_t) * 2) + sizeof(bucket*) + sizeof(bitmap_t);
+static size_t HEADER_SIZE = sizeof(long) + (sizeof(size_t) * 2) + sizeof(bucket*) + sizeof(bitmap_t);
+static size_t NUM_ARENAS = 10;
 
 // possibly remove 4 and 8 because chunk header is 8 bytes
 size_t bucket_sizes[] = {12, 16, 24, 32, 48, 64, 96, 128, 192, 256,
@@ -21,8 +22,7 @@ size_t bucket_sizes[] = {12, 16, 24, 32, 48, 64, 96, 128, 192, 256,
 size_t num_bucket_sizes = 17; // 18
 
 static bucket*** arenas;
-const size_t NUM_ARENAS = 10;
-static pthread_mutex_t* arena_mutexes;
+pthread_mutex_t* arena_mutexes;
 
 static
 size_t
@@ -120,7 +120,7 @@ initialize_arenas()
 
     for (int i = 0; i < NUM_ARENAS; i++) {
         initialize_buckets(i);
-        arena_mutexes[i] = PTHREAD_MUTEX_INITIALIZER;
+        pthread_mutex_init(&arena_mutexes[i], NULL);
     } 
 }
 
@@ -159,10 +159,10 @@ xmalloc(size_t bytes)
     int arena_idx = thread_id % NUM_ARENAS;
     bucket** cur_arena = arenas[arena_idx];
 
-    if (pthread_mutex_trylock(arena_mutexes[arena_idx]) == 1) {
+    if (pthread_mutex_trylock(&arena_mutexes[arena_idx]) == 1) {
       arena_idx = (arena_idx + 1) % NUM_ARENAS;
       cur_arena = arenas[arena_idx];
-      pthread_mutex_lock(arena_mutexes[arena_idx]);
+      pthread_mutex_lock(&arena_mutexes[arena_idx]);
     }
 
     bucket* cur_bucket = find_cur_bucket(arena_idx, bytes);
@@ -171,7 +171,7 @@ xmalloc(size_t bytes)
     
     while (alloc_bit_idx == -1) {
         if (cur_bucket->next == NULL) {
-            cur_bucket->next = make_bucket(cur_bucket->size);
+            cur_bucket->next = make_bucket(arena_idx, cur_bucket->size);
             alloc_bit_idx = 0;
             cur_bucket = cur_bucket->next;
             break;
@@ -183,7 +183,7 @@ xmalloc(size_t bytes)
 
     void* chunk = ((void*)cur_bucket) + HEADER_SIZE + convert_to_bytes(cur_bucket->bitmap_size) + (alloc_bit_idx * cur_bucket->size);
 
-    pthread_mutex_unlock(arena_mutexes[arena_idx]);   
+    pthread_mutex_unlock(&arena_mutexes[arena_idx]);   
     
     *(size_t *)chunk = bytes;
     chunk = chunk + sizeof(size_t);

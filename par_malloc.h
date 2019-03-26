@@ -14,7 +14,7 @@ typedef struct bucket bucket;
 typedef unsigned char* bitmap_t;
 
 struct bucket {
-    int arena_id;
+    long arena_id;
     size_t size;
     size_t bitmap_size; // in bits
     bucket* next;
