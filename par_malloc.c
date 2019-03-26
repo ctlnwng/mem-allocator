@@ -7,22 +7,23 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <pthread.h>
+#include <sys/types.h>
+#include <sys/syscall.h>
 
 #include "par_malloc.h"
 #include "xmalloc.h"
 
-static size_t PAGE_SIZE = 4096;
-static size_t NUM_ARENAS = 1;
+static size_t PAGE_SIZE = 4096 * 8;
+static size_t NUM_ARENAS = 10;
 static size_t HEADER_SIZE = sizeof(long) + (sizeof(size_t) * 2) + sizeof(bucket*) + sizeof(bitmap_t);
 
-size_t bucket_sizes[] = {12, 16, 24, 32, 48, 64, 96, 128, 192, 256,
+static size_t bucket_sizes[] = {12, 16, 24, 32, 48, 64, 96, 128, 192, 256,
     384, 512, 768, 1024, 1536, 2048, 3192, 4096};
-size_t num_bucket_sizes = 17; // 18
+static size_t num_bucket_sizes = 17; // 18
 
 static bucket*** arenas;
 static pthread_mutex_t* arena_mutexes;
 static hm_stats stats;
-
 
 void
 hprintstats()
@@ -61,25 +62,25 @@ convert_to_bytes(size_t bits)
 // NOTE: The following bitmap functions were taken from the following
 // stack overflow thread: https://stackoverflow.com/questions/16947492/looking-for-a-bitmap-implementation-api-in-linux-c
 void
-set_bit(bitmap_t b, int i)
+set_bit(bitmap_t b, long i)
 {
     b[i / 64] |= 1 << (i & 63);
 }
 
 void
-unset_bit(bitmap_t b, int i)
+unset_bit(bitmap_t b, long i)
 {
     b[i / 64] &= ~(1 << (i & 63));
 }
 
 int
-get_bit(bitmap_t b, int i)
+get_bit(bitmap_t b, long i)
 {
     return b[i / 64] & (1 << (i & 63)) ? 1 : 0;
 }
 
 int
-find_alloc_bit_idx(bitmap_t b, int bitmap_size)
+find_alloc_bit_idx(bitmap_t b, size_t bitmap_size)
 {
     for (int ii = 0; ii < convert_to_bytes(bitmap_size) / 8; ++ii) {
         long flipped_long = ~b[ii];
@@ -204,7 +205,7 @@ xmalloc(size_t bytes)
         pthread_mutex_lock(&arena_mutexes[arena_idx]);
     }
 
-    int alloc_bit_idx = find_alloc_bit_idx(cur_bucket->bitmap, cur_bucket->bitmap_size);
+    long alloc_bit_idx = find_alloc_bit_idx(cur_bucket->bitmap, cur_bucket->bitmap_size);
 
     while (alloc_bit_idx == -1) {
         if (cur_bucket->next == NULL) {
@@ -241,11 +242,19 @@ xfree(void* ptr)
         munmap(ptr, num_pages * PAGE_SIZE);
         return;
     }
+    bucket* cur_bucket;
+    for (int ii = 0; ii < NUM_ARENAS; ++ii) {
+        bucket* temp_bucket = find_cur_bucket(ii, size);
+        if ((void*)temp_bucket < ptr && ((void*)temp_bucket + PAGE_SIZE) > ptr) {
+           cur_bucket = temp_bucket;
+           break;
+        } 
+    }
 
-    bucket* cur_bucket = (bucket*)(void*)((uintptr_t)ptr & (uintptr_t)0xFFFFFFFFF000);
+    //bucket* cur_bucket = (bucket*)(void*)((uintptr_t)ptr & (uintptr_t)0xFFFFFFFF0000);
+    //bucket* cur_bucket = find_cur_bucket(size);
     long arena_id = cur_bucket->arena_id;
 
-    // bucket* cur_bucket = find_cur_bucket(size);
     // size_t bucket_size = (size > 768) ? 4 * PAGE_SIZE : PAGE_SIZE;
 
     /*
@@ -254,11 +263,10 @@ xfree(void* ptr)
        }
     */
 
-    int bit_idx_to_free = (ptr - ((void *)cur_bucket + HEADER_SIZE + convert_to_bytes(cur_bucket->bitmap_size))) / cur_bucket->size;
+    long bit_idx_to_free = (ptr - ((void *)cur_bucket + HEADER_SIZE + convert_to_bytes(cur_bucket->bitmap_size))) / cur_bucket->size;
 
-//    pthread_mutex_lock(&arena_mutexes[arena_id]);
+    pthread_mutex_lock(&arena_mutexes[arena_id]);
     unset_bit(cur_bucket->bitmap, bit_idx_to_free);
-//    pthread_mutex_unlock(&arena_mutexes[arena_id]);
 
     // unmap an empty bucket
     if (cur_bucket->bitmap == NULL) {
@@ -275,6 +283,8 @@ xfree(void* ptr)
         stats.pages_unmapped += 1;
         munmap(cur_bucket, PAGE_SIZE);
     }
+    
+    pthread_mutex_unlock(&arena_mutexes[arena_id]);
 }
 
 void*

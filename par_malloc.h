@@ -26,8 +26,8 @@ bucket* make_bucket(int arena_id, size_t size);
 hm_stats* hgetstats();
 void hprintstats();
 
-void set_bit(bitmap_t b, int i);
-void unset_bit(bitmap_t b, int i);
-int get_bit(bitmap_t b, int i);
+void set_bit(bitmap_t b, long i);
+void unset_bit(bitmap_t b, long i);
+int get_bit(bitmap_t b, long i);
 
 #endif
