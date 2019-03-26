@@ -1,0 +1,41 @@
+Challenge 2 Report - Sebastian Wisniowiecki, Caitlin Wang
+
+1. Results table
+
++----------------------+-------------------------+
+| Allocator, test file | Measured time (seconds) |
++----------------------+-------------------------+
+| hw07, ivec           |                    0.05 |
+| hw07, list           |                    0.05 |
+| par, ivec            |                    0.05 |
+| par, list            |                    0.05 |
+| sys, ivec            |                    0.05 |
+| sys, list            |                    0.05 |
++----------------------+-------------------------+
+
+
+2. Test machine specs
+
+Local machine:
+
+Operating system: Linux Ubuntu (64-bit)
+Processor model: Intel Core i5-4278U CPU @ 2.60GHz 
+Number of processor cores: 2
+Amount of RAM: 2GB
+
+
+3. Strategy discussion
+
+We attempted to implement the following strategies to optimize our
+allocator from Homework 8:
+
+Simple bucket allocator:
+We started off by implementing a bucket allocator in order to 
+reduce the time it takes to find an available chunk of memory to O(1),
+as previously it took linear time. This required us to...
+
+Multiple arenas:
+
+
+4. Results discussion
+
