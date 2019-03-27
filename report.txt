@@ -31,8 +31,13 @@ allocator from Homework 8:
 
 Simple bucket allocator:
 We started off by implementing a bucket allocator in order to 
-reduce the time it takes to find an available chunk of memory. Using
-a bitmap, we are now able to lookup a free chunk in constant time.
+reduce the time it takes to find an available chunk of memory. The
+header for each bucket list includes the size, pointer to the next 
+bucket (of the same size), the bitmap size in bits, and a pointer
+to the bitmap. We have 17 total buckets incrementing by powers of 2 
+and the values in between. Using a bitmap with 64-bit machine words, 
+we are now able to lookup a free chunk in constant time using bit
+manipulation and the ffsl function.
 
 Multiple arenas:
 We then decided to implement multiple arenas as an optimized approach
@@ -40,15 +45,47 @@ to making our allocator thread-safe. In our program, each arena is a
 separate copy of our list of buckets. With our hw07_malloc allocator
 we simply instantiated a global mutex and locked it whenever our
 free list was being accessed/modified. However, we wanted to avoid
-lock contention so we initialized a mutex for each arena.
+lock contention so we initialized a mutex for each arena. In the 
+alloc case, when the first desired arena is locked, the thread will
+try to acquire the lock on the next arena to increase speed.
 
 Unmapping empty buckets:
+To save memory, when the last used bit in a bucket is freed, the bucket 
+is unmapped. Since the buckets are a linked list, the pointers are
+rearranged accordingly to keep integrity of the list.
 
 Allocating > 1 page per bucket:
 This is something we worked on but were ultimately unable to
-completely implement.
-
+completely implement due to difficulties finding the arena
+to which the pointer belonged to. We concluded that adding an
+arena_id to the header of EACH allocated chunk would result in
+too much wasted memory.
 
 4. Results discussion
 
+In the end, our buckets implementation could not beat the system time
+in the list case. In the ivec case, our allocator matched or beat the 
+time of the system allocator. We attribute this discrepancy due to the
+fact that we could only allocate one page per bucket. As previously
+mentioned, we were not able to figure out how to find a pointer's
+respective arena without including the arena id in the header. With
+multiple pages per bucket, the addresses of each bucket became
+unpredictable. If we were to use a bucket with a page size like 65536 
+(PAGE_SIZE * 16), the allocator would call mmap much less frequently,
+resulting in a massive speedup due to the overhead of system calls. 
+Even with such a large size for buckets, the initial memory 
+requirement would be ~10MB, assuming 10 arenas.
+
+A second complication comes from our management of multiple arenas.
+It seems that when we created multiple arenas, xfree did not behave
+as expected and sometimes caused segfaults. Even after trying nearly
+*everything*, arenas were a problematic and hard to manage solution.
+
+In general, it seems like this system is still a vast improvement
+on the hw08 allocator, beating it by a large margin in every case.
+
+We spent a very long time on this assignment, and from the
+various things we tried, it's obvious that multi-threaded memory
+allocators are no joke. There is a constant balance between 
+performance, memory usage, and fragmentation.
 
