@@ -6,11 +6,6 @@
 #include "xmalloc.h"
 #include "hmalloc.h"
 
-/* CH02 TODO:
- *  - This should call / use your alloctor from the previous HW,
- *    modified to be thread-safe and have a realloc function.
- */
-
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void*

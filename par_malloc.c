@@ -7,19 +7,17 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <pthread.h>
-#include <sys/types.h>
-#include <sys/syscall.h>
 
 #include "par_malloc.h"
 #include "xmalloc.h"
 
-static size_t PAGE_SIZE = 4096 * 8;
+static size_t PAGE_SIZE = 4096;
 static size_t NUM_ARENAS = 10;
 static size_t HEADER_SIZE = sizeof(long) + (sizeof(size_t) * 2) + sizeof(bucket*) + sizeof(bitmap_t);
 
 static size_t bucket_sizes[] = {12, 16, 24, 32, 48, 64, 96, 128, 192, 256,
-    384, 512, 768, 1024, 1536, 2048, 3192, 4096};
-static size_t num_bucket_sizes = 17; // 18
+    384, 512, 768, 1024, 1536, 2048, 3192};
+static size_t num_bucket_sizes = 17;
 
 static bucket*** arenas;
 static pthread_mutex_t* arena_mutexes;
@@ -101,31 +99,17 @@ find_alloc_bit_idx(bitmap_t b, size_t bitmap_size)
     return -1;
 }
 
-/*
-   for (int i = 0; i < bitmap_size; i++) {
-   if (get_bit(b, i) == 0) {
-   set_bit(b, i);
-   return i;
-   }
-   }
-
-   return -1;
-   }
- */
-
 bucket*
 make_bucket(int arena_id, size_t size)
 {
     stats.pages_mapped += 1;
 
-    double temp = (PAGE_SIZE - HEADER_SIZE);
+    double temp = PAGE_SIZE - HEADER_SIZE;
     size_t num_chunks = floor((temp * 8) / (((double)size * 8) + 1));
     num_chunks = floor((PAGE_SIZE - HEADER_SIZE - convert_to_bytes(num_chunks)) / size);
 
-    // size_t bucket_size = (size > 768) ? 4 * PAGE_SIZE : PAGE_SIZE;
-    size_t bucket_size = PAGE_SIZE;
+    bucket* new_bucket = (bucket*)mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
 
-    bucket* new_bucket = (bucket*) mmap(NULL, bucket_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
     new_bucket->arena_id = arena_id;
     new_bucket->size = size;
     new_bucket->bitmap_size = num_chunks;
@@ -139,7 +123,7 @@ make_bucket(int arena_id, size_t size)
 void
 initialize_buckets(int arena_id)
 {
-    arenas[arena_id] = (bucket**) mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    arenas[arena_id] = (bucket**)mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
     bucket** buckets = arenas[arena_id];
 
     for (int ii = 0; ii < num_bucket_sizes; ++ii) {
@@ -167,12 +151,14 @@ find_cur_bucket(int arena_id, size_t size)
 {
     bucket** buckets = arenas[arena_id];
     bucket* cur_bucket;
+
     for (int ii = 0; ii < num_bucket_sizes; ++ii) {
         if (bucket_sizes[ii] >= size) {
             cur_bucket = buckets[ii];
             break;
         }
     }
+
     return cur_bucket;
 }
 
@@ -185,9 +171,11 @@ xmalloc(size_t bytes)
 
     bytes = bytes + sizeof(size_t);
 
+    // mmap all sizes greater than 3192
     if (bytes > 3192) {
         size_t num_pages = div_up(bytes, PAGE_SIZE);
-        void* ptr =  mmap(NULL, num_pages * PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+        void* ptr = mmap(NULL, num_pages * PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+
         *(size_t *)ptr = bytes;
         ptr = ptr + sizeof(size_t);
         return ptr; 
@@ -223,7 +211,7 @@ xmalloc(size_t bytes)
     
     void* chunk = ((void*)cur_bucket) + HEADER_SIZE + convert_to_bytes(cur_bucket->bitmap_size) + (alloc_bit_idx * cur_bucket->size);
 
-    *(size_t *)chunk = bytes;
+    *(size_t*)chunk = bytes;
     chunk = chunk + sizeof(size_t);
     return chunk;
 }
@@ -242,27 +230,11 @@ xfree(void* ptr)
         munmap(ptr, num_pages * PAGE_SIZE);
         return;
     }
-    bucket* cur_bucket;
-    for (int ii = 0; ii < NUM_ARENAS; ++ii) {
-        bucket* temp_bucket = find_cur_bucket(ii, size);
-        if ((void*)temp_bucket < ptr && ((void*)temp_bucket + PAGE_SIZE) > ptr) {
-           cur_bucket = temp_bucket;
-           break;
-        } 
-    }
 
-    //bucket* cur_bucket = (bucket*)(void*)((uintptr_t)ptr & (uintptr_t)0xFFFFFFFF0000);
-    //bucket* cur_bucket = find_cur_bucket(size);
+    // bit mask ptr to find page it's on
+    bucket* cur_bucket = (bucket*)(void*)((uintptr_t)ptr & (uintptr_t)0xFFFFFFFFF000);
+
     long arena_id = cur_bucket->arena_id;
-
-    // size_t bucket_size = (size > 768) ? 4 * PAGE_SIZE : PAGE_SIZE;
-
-    /*
-       while ((void*)cur_bucket + PAGE_SIZE < ptr) {
-       cur_bucket = cur_bucket->next;
-       }
-    */
-
     long bit_idx_to_free = (ptr - ((void *)cur_bucket + HEADER_SIZE + convert_to_bytes(cur_bucket->bitmap_size))) / cur_bucket->size;
 
     pthread_mutex_lock(&arena_mutexes[arena_id]);

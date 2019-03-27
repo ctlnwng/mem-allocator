@@ -21,10 +21,10 @@ struct bucket {
     bitmap_t bitmap;
 };
 
-bucket* make_bucket(int arena_id, size_t size);
-
 hm_stats* hgetstats();
 void hprintstats();
+
+bucket* make_bucket(int arena_id, size_t size);
 
 void set_bit(bitmap_t b, long i);
 void unset_bit(bitmap_t b, long i);
