@@ -31,11 +31,24 @@ allocator from Homework 8:
 
 Simple bucket allocator:
 We started off by implementing a bucket allocator in order to 
-reduce the time it takes to find an available chunk of memory to O(1),
-as previously it took linear time. This required us to...
+reduce the time it takes to find an available chunk of memory. Using
+a bitmap, we are now able to lookup a free chunk in constant time.
 
 Multiple arenas:
+We then decided to implement multiple arenas as an optimized approach
+to making our allocator thread-safe. In our program, each arena is a
+separate copy of our list of buckets. With our hw07_malloc allocator
+we simply instantiated a global mutex and locked it whenever our
+free list was being accessed/modified. However, we wanted to avoid
+lock contention so we initialized a mutex for each arena.
+
+Unmapping empty buckets:
+
+Allocating > 1 page per bucket:
+This is something we worked on but were ultimately unable to
+completely implement.
 
 
 4. Results discussion
+
 
